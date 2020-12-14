@@ -1,7 +1,12 @@
 package com.martyphee.accounting.repo
 
+import com.martyphee.accounting.DbSessionLayer.DbSession
+import skunk._
+import skunk.implicits._
+import skunk.codec.all._
 import zio.console.Console
-import zio.{Has, IO, UIO, ZIO, ZLayer}
+import zio._
+import zio.interop.catz._
 
 import java.util.UUID
 
@@ -15,13 +20,20 @@ object AccountRepoLayer {
       def find(id: String): ZIO[Any, String, Account]
     }
 
-    val live: ZLayer[Console, String, AccountRepo] = ZLayer.fromFunction { console: zio.console.Console => accountId: String =>
+    val live: ZLayer[Console with DbSession, String, AccountRepo] = ZLayer.fromFunction { console: zio.console.Console =>accountId: String =>
       console.get.putStrLn(s"Got request for pet: $accountId") *> {
-        if (accountId == "42") {
-          UIO(Account(UUID.randomUUID, "Tapirus terrestris"))
-        } else {
-          IO.fail("Unknown pet id")
+        DbSession.session.flatMap { s =>
+          s.use { session =>
+            for {
+              tz <- session.unique(sql"select current_timestamp".query(timestamptz))
+            } yield UIO(Account(UUID.randomUUID, "Tapirus terrestris"))
+          }
         }
+//        if (accountId == "42") {
+//          UIO(Account(UUID.randomUUID, "Tapirus terrestris"))
+//        } else {
+//          IO.fail("Unknown pet id")
+//        }
       }
     }
 
