@@ -1,42 +1,44 @@
 package com.martyphee.accounting.repo
 
+import zio._
+import zio.interop.catz._
 import com.martyphee.accounting.DbSessionLayer.DbSession
 import skunk._
 import skunk.implicits._
 import skunk.codec.all._
-import zio.console.Console
-import zio._
-import zio.interop.catz._
+import fs2.Stream
 
 import java.util.UUID
 
 case class Account(id: UUID, name: String)
 
-object AccountRepoLayer {
-  type AccountRepo = Has[AccountRepo.Service]
+final class AccountRepoService(session: TaskManaged[Session[Task]]) extends Repo.Service[Account] {
+  import AccountRepoService._
 
-  object AccountRepo {
-    trait Service {
-      def find(id: String): ZIO[Any, String, Account]
+  implicit val runtime: Runtime[ZEnv] = Runtime.default
+
+  def find(id: String): Task[Stream[Task, Account]] = {
+    session.use { s =>
+      UIO(for {
+        ps <- Stream.resource(s.prepare(SQL.find))
+        c <- ps.stream("test", 32)
+      } yield (c))
     }
-
-    val live: ZLayer[Console with DbSession, String, AccountRepo] = ZLayer.fromFunction { console: zio.console.Console =>accountId: String =>
-      console.get.putStrLn(s"Got request for pet: $accountId") *> {
-        DbSession.session.flatMap { s =>
-          s.use { session =>
-            for {
-              tz <- session.unique(sql"select current_timestamp".query(timestamptz))
-            } yield UIO(Account(UUID.randomUUID, "Tapirus terrestris"))
-          }
-        }
-//        if (accountId == "42") {
-//          UIO(Account(UUID.randomUUID, "Tapirus terrestris"))
-//        } else {
-//          IO.fail("Unknown pet id")
-//        }
-      }
-    }
-
-    def find(id: String): ZIO[AccountRepo, String, Account] = ZIO.accessM(_.get.find(id))
   }
+}
+
+object AccountRepoService {
+  object SQL {
+    def find: Query[String, Account] =
+      sql"""
+            select id, name
+            from account
+            where id = $text
+           """
+        .query(uuid ~ varchar)
+        .gmap[Account]
+  }
+
+  val live: ZLayer[DbSession, Throwable, AccountRepo] =
+    ZLayer.fromService(new AccountRepoService(_))
 }

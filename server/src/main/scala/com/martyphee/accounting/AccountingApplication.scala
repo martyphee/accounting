@@ -2,8 +2,7 @@ package com.martyphee.accounting
 
 import cats.syntax.all._
 import com.martyphee.accounting.DbSessionLayer.DbSession
-import com.martyphee.accounting.repo.Account
-import com.martyphee.accounting.repo.AccountRepoLayer.AccountRepo
+import com.martyphee.accounting.repo.{Account, AccountRepo}
 import com.martyphee.accounting.services.AccountServiceLayer.AccountService
 import io.circe.generic.auto._
 import org.http4s._
