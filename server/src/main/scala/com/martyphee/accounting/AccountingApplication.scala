@@ -83,8 +83,10 @@ object AccountingApplication extends App with LazyLogging {
         _ <- db.session.use({ s =>
           for {
             result <- BasicPersistence.doBasic(s)
-            t <- result
-            _ <- putStrLn(s"Execution done: ${t}")
+            _ <- result.foldM(
+              err => putStrLnErr(s"s{err}"),
+              offset => putStrLn(s"Current Time: ${offset}")
+            )
             result2 <- ExtendedPersistence.doExtended(s)
             _ <- result2.use({ q =>
               q.evalMap(c => putStrLn(s"${c}"))
