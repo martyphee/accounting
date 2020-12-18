@@ -14,11 +14,11 @@ import java.time.OffsetDateTime
 // a data model
 case class Country(name: String, code: String, population: Int)
 
-object Persistence extends LazyLogging {
-  type Persistence = Has[Persistence.Service]
+object BasicPersistence extends LazyLogging {
+  type BasicPersistence = Has[BasicPersistence.Service]
 
   trait Service {
-    def doExtended(session: Session[Task]): Task[OffsetDateTime]
+    def doBasic(session: Session[Task]): Task[OffsetDateTime]
   }
 
   val extended: Query[String, Country] =
@@ -30,34 +30,26 @@ object Persistence extends LazyLogging {
       .query(varchar ~ bpchar(3) ~ int4)
       .gmap[Country]
 
-  val live: ZLayer[DbSession, Nothing, Persistence] = ZLayer.fromService { db: DbSession.Service =>
+  val live: ZLayer[DbSession, Nothing, BasicPersistence] = ZLayer.fromService { db: DbSession.Service =>
       new Service {
-        override def doExtended(session: Session[Task]): Task[OffsetDateTime] = {
-          logger.debug("doExtended")
-//          val prepared = session.prepare(extended)
-//          prepared.use { ps =>
-//            ps.stream("U%", 64)
-//              .evalMap(c => IO(putStrLn(c.name)))
-//              .compile
-//              .drain
-//          }
+        override def doBasic(session: Session[Task]): Task[OffsetDateTime] = {
           session.unique(sql"select current_timestamp".query(timestamptz))
         }
       }
   }
 
-  def doExtended(session: Session[Task]): URIO[Persistence, Task[OffsetDateTime]] = ZIO.access(
-    _.get.doExtended(session)
+  def doBasic(session: Session[Task]): URIO[BasicPersistence, Task[OffsetDateTime]] = ZIO.access(
+    _.get.doBasic(session)
   )
 }
 
 object AccountingApplication extends App with LazyLogging {
-  import com.martyphee.accounting.Persistence.Persistence
+  import com.martyphee.accounting.BasicPersistence.BasicPersistence
 
   override def run(args: List[String]): URIO[ZEnv, ZExitCode] = {
-    type AppEnvironment = Console with DbSession with Persistence
+    type AppEnvironment = Console with DbSession with BasicPersistence
     val appEnvironment =
-      zio.console.Console.live >+> DbSession.live >+> Persistence.live
+      zio.console.Console.live >+> DbSession.live >+> BasicPersistence.live
 
     val program: ZIO[AppEnvironment, Throwable, Unit] = {
       for {
@@ -65,7 +57,7 @@ object AccountingApplication extends App with LazyLogging {
         db <- ZIO.service[DbSession.Service]
         _ <- db.session.use({ s =>
           for {
-            result <- Persistence.doExtended(s)
+            result <- BasicPersistence.doBasic(s)
             t <- result
             _ <- putStrLn(s"Execution done: ${t}")
           } yield ()
