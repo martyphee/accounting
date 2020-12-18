@@ -1,4 +1,5 @@
 import Dependencies._
+import Versions.zioLogging
 
 ThisBuild / scalaVersion     := "2.13.3"
 ThisBuild / version          := "0.1.0-SNAPSHOT"
@@ -15,12 +16,6 @@ lazy val flywaySettings = Seq(
   flywayBaselineOnMigrate := true
 )
 
-lazy val loggerDependencies = Seq(
-  "ch.qos.logback" % "logback-classic" % "1.2.3",
-  "ch.qos.logback" % "logback-core" % "1.2.3",
-  "com.typesafe.scala-logging" %% "scala-logging" % "3.9.2"
-)
-
 val commonJvmSettings: Seq[Def.Setting[_]] = commonSmlBuildSettings
 
 lazy val dbDependencies = List(
@@ -31,20 +26,15 @@ lazy val root = (project in file("server"))
   .settings(commonJvmSettings)
   .settings(
     name := "accounting",
-    libraryDependencies ++= loggerDependencies ++ dbDependencies ++ Seq(
+    libraryDependencies ++= dbDependencies ++ Seq(
       scalaTest % Test,
       "dev.zio" %% "zio-interop-cats" % Versions.zioInteropCats,
-      "io.circe" %% "circe-core" % Versions.circe,
-      "io.circe" %% "circe-parser" % Versions.circe,
-      "io.circe" %% "circe-generic-extras" % Versions.circe,
       "org.typelevel" %% "cats-effect" % Versions.catsEffect,
-      "org.http4s" %% "http4s-dsl" % Versions.http4s,
-      "com.softwaremill.sttp.tapir" %% "tapir-zio" % "0.17.0-M10",
-      "com.softwaremill.sttp.tapir" %% "tapir-zio-http4s-server" % "0.17.0-M10",
-      "com.softwaremill.sttp.tapir" %% "tapir-json-circe" % "0.17.0-M10",
-      "com.softwaremill.sttp.tapir" %% "tapir-swagger-ui-http4s" % "0.17.0-M10",
-      "com.softwaremill.sttp.tapir" %% "tapir-openapi-docs" % "0.17.0-M10",
-      "com.softwaremill.sttp.tapir" %% "tapir-openapi-circe-yaml" % "0.17.0-M10"
+      "dev.zio"                      %% "zio-logging"         % zioLogging,
+      "dev.zio"                      %% "zio-logging-slf4j"   % zioLogging,
+      "org.apache.logging.log4j"      % "log4j-api"           % Versions.log4j,
+      "org.apache.logging.log4j"      % "log4j-core"          % Versions.log4j,
+      "org.apache.logging.log4j"      % "log4j-slf4j-impl"    % Versions.log4j,
     )
   )
 
