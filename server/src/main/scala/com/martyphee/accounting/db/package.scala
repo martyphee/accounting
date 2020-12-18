@@ -3,7 +3,6 @@ package com.martyphee.accounting
 import cats.effect.Resource
 import skunk.Session
 import zio._
-import zio.console.Console
 import zio.interop.catz._
 import natchez.Trace.Implicits.noop
 
@@ -20,7 +19,7 @@ package object db {
       trait PoolConfig {}
     }
 
-    val live: ZLayer[Console, Throwable, DbSession] = ZLayer.fromFunction { console =>
+    val live: ULayer[DbSession] = ZLayer.succeed( {
       new Service {
         def session: Managed[Throwable, skunk.Session[Task]] = {
           val session: Resource[Task, Session[Task]] = Session.single(
@@ -32,7 +31,7 @@ package object db {
           session.toManaged
         }
       }
-    }
+    })
 
 
     def session: ZIO[DbSession, Throwable, Managed[Throwable, skunk.Session[Task]]] =

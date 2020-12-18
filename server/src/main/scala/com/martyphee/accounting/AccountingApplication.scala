@@ -1,90 +1,76 @@
 package com.martyphee.accounting
 
 import com.martyphee.accounting.db.DbSession
+import com.typesafe.scalalogging.LazyLogging
 import skunk._
 import skunk.implicits._
 import skunk.codec.all._
-import zio._
-import zio.console.{Console, putStrLn, putStrLnErr}
+import zio.{ExitCode => ZExitCode, _}
+import zio.console._
 import zio.interop.catz._
-import fs2._
-import natchez.Trace.Implicits.noop
-import zio.logging.Logging
-import zio.logging.slf4j.Slf4jLogger
+
+import java.time.OffsetDateTime
 
 // a data model
 case class Country(name: String, code: String, population: Int)
 
-object Persistence {
+object Persistence extends LazyLogging {
   type Persistence = Has[Persistence.Service]
 
-  import org.slf4j.Logger
-  import org.slf4j.LoggerFactory
-
-  val logger: Logger = LoggerFactory.getLogger(classOf[Nothing])
-
   trait Service {
-    def doExtended(session: Session[Task]): Task[Unit]
+    def doExtended(session: Session[Task]): Task[OffsetDateTime]
   }
 
   val extended: Query[String, Country] =
     sql"""
       SELECT name, code, population
       FROM   country
-      WHERE  name like $varchar
+      WHERE  name like $text
     """
       .query(varchar ~ bpchar(3) ~ int4)
       .gmap[Country]
 
   val live: ZLayer[DbSession, Nothing, Persistence] = ZLayer.fromService { db: DbSession.Service =>
       new Service {
-        override def doExtended(session: Session[Task]): Task[Unit] = {
+        override def doExtended(session: Session[Task]): Task[OffsetDateTime] = {
           logger.debug("doExtended")
-//          val stream: Stream[Task, Unit] =
-//            for {
-//              ps <- Stream.resource(session.prepare(extended))
-//              c <- ps.stream("U%", 64)
-//              _ <- Stream.eval(IO(putStrLn(c.name)))
-//            } yield ()
-//          stream.compile.drain
-
-          session.prepare(extended).use { ps =>
-            ps.stream("U%", 64)
-              .evalMap(c => IO(putStrLn(c.name)))
-              .compile
-              .drain
-          }.tapError(err =>
-            logging.log.error((s"Unable to prepare query $err"))
-          ).catchAll( err =>
-            logging.log.error(s"Unable to prepare query $err")
-          )
-          Task(logger.debug("doExtended End"))
+//          val prepared = session.prepare(extended)
+//          prepared.use { ps =>
+//            ps.stream("U%", 64)
+//              .evalMap(c => IO(putStrLn(c.name)))
+//              .compile
+//              .drain
+//          }
+          session.unique(sql"select current_timestamp".query(timestamptz))
         }
       }
   }
 
-  def doExtended(session: Session[Task]): URIO[Persistence, Unit] = ZIO.access(
+  def doExtended(session: Session[Task]): URIO[Persistence, Task[OffsetDateTime]] = ZIO.access(
     _.get.doExtended(session)
   )
 }
 
-object AccountingApplication extends App {
+object AccountingApplication extends App with LazyLogging {
   import com.martyphee.accounting.Persistence.Persistence
 
-  override def run(args: List[String]): URIO[ZEnv, ExitCode] = {
-    type AppEnvironment = Console with Logging with DbSession with Persistence
+  override def run(args: List[String]): URIO[ZEnv, ZExitCode] = {
+    type AppEnvironment = Console with DbSession with Persistence
     val appEnvironment =
-      zio.console.Console.live >+> Slf4jLogger.make((_, msg) =>
-        msg
-      ) >+> DbSession.live >+> Persistence.live
+      zio.console.Console.live >+> DbSession.live >+> Persistence.live
 
     val program: ZIO[AppEnvironment, Throwable, Unit] = {
       for {
-        _ <- logging.log.info(s"Starting with test")
-        _ <- putStrLn("Application is starting up")
+        _ <- putStrLnErr("Application is starting up")
         db <- ZIO.service[DbSession.Service]
-        _ <- db.session.use({ s => Persistence.doExtended(s) })
-      } yield (ExitCode.failure)
+        _ <- db.session.use({ s =>
+          for {
+            result <- Persistence.doExtended(s)
+            t <- result
+            _ <- putStrLn(s"Execution done: ${t}")
+          } yield ()
+        })
+      } yield (ZExitCode.failure)
     }
 
     program

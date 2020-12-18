@@ -30,11 +30,8 @@ lazy val root = (project in file("server"))
       scalaTest % Test,
       "dev.zio" %% "zio-interop-cats" % Versions.zioInteropCats,
       "org.typelevel" %% "cats-effect" % Versions.catsEffect,
-      "dev.zio"                      %% "zio-logging"         % zioLogging,
-      "dev.zio"                      %% "zio-logging-slf4j"   % zioLogging,
-      "org.apache.logging.log4j"      % "log4j-api"           % Versions.log4j,
-      "org.apache.logging.log4j"      % "log4j-core"          % Versions.log4j,
-      "org.apache.logging.log4j"      % "log4j-slf4j-impl"    % Versions.log4j,
+      "ch.qos.logback" % "logback-classic" % "1.2.3",
+      "com.typesafe.scala-logging" %% "scala-logging" % "3.9.2"
     )
   )
 
