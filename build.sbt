@@ -7,6 +7,17 @@ ThisBuild / organizationName := "Zego"
 
 resolvers += Resolver.sonatypeRepo("snapshots")
 
+lazy val flywaySettings = Seq(
+  flywayUrl := "jdbc:postgresql://localhost:5432/accounting",
+  flywayUser := "postgres",
+  flywayPassword := "",
+  flywayUrl in Test := "jdbc:postgresql://localhost:5432/accounting_test",
+  flywayUser in Test := "postgres",
+  flywayPassword in Test := "",
+  flywayBaselineOnMigrate := true
+)
+
+
 lazy val root = (project in file("."))
   .settings(
     name := "accounting"
