@@ -14,7 +14,8 @@ lazy val flywaySettings = Seq(
   flywayUrl in Test := "jdbc:postgresql://localhost:5432/accounting_test",
   flywayUser in Test := "postgres",
   flywayPassword in Test := "",
-  flywayBaselineOnMigrate := true
+  flywayBaselineOnMigrate := true,
+  flywayLocations := Seq("filesystem:migrations/src/main/resources/db/migration")
 )
 
 
@@ -88,3 +89,13 @@ lazy val core = (project in file("modules/core"))
       Libraries.squants
     )
   )
+
+lazy val migrations = project.in(file("migrations"))
+  .enablePlugins(FlywayPlugin)
+  .settings(flywaySettings: _*)
+  .settings {
+    libraryDependencies ++= Seq(
+      "org.postgresql" % "postgresql" % "42.2.5"
+    )
+  }
+
