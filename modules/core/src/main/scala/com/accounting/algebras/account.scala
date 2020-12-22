@@ -9,9 +9,9 @@ import skunk._
 import skunk.codec.all._
 import skunk.implicits._
 
-
 trait Accounts[F[_]] {
   def get(accountId: AccountId): F[Option[Account]]
+  def getN(count: Long = 10): F[List[Account]]
 
   def create(
       name: AccountName
@@ -32,6 +32,14 @@ private class LiveAccounts[F[_]: Sync](
     sessionPool: Resource[F, Session[F]]
 ) extends Accounts[F] {
   import AccountQueries._
+
+  override def getN(count: Long = 10): F[List[Account]] = {
+    sessionPool.use { session =>
+      session.prepare(selectAccounts).use { ps =>
+        ps.stream(GetNCount(count), 1024).compile.toList
+      }
+    }
+  }
 
   override def get(accountId: AccountId): F[Option[Account]] = {
     sessionPool.use { session =>
@@ -79,6 +87,14 @@ private object AccountQueries {
          select *
          from   account
          where id = ${uuid.cimap[AccountId]}
+    """.query(decoder)
+
+  val selectAccounts: Query[GetNCount, Account] =
+    sql"""
+         select *
+         from   account
+         order by id
+         limit ${int8.cimap[GetNCount]}
     """.query(decoder)
 
   val createAccount: Command[AccountCreate] =

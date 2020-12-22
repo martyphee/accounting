@@ -25,8 +25,13 @@ object account {
     name: AccountName
   )
 
+  case class AccountCreateRequest(
+      name: AccountName
+  )
+
   case class InvalidAccount(value: String) extends NoStackTrace
 
+  @newtype case class GetNCount(count: Long)
   @newtype case class AccountIdParm(value: NonEmptyString) {
     def toDomain: AccountId = AccountId(UUID.fromString(value.value))
   }

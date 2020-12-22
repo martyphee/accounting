@@ -1,7 +1,7 @@
 package com.accounting.http.routes
 
 import cats.Applicative
-import com.accounting.domain.account.Account
+import com.accounting.domain.account._
 import io.circe._
 import io.circe.generic.semiauto._
 import io.estatico.newtype.ops._
@@ -29,6 +29,12 @@ private[http] trait JsonCodecs {
 
 
   implicit val accountDecoder: Decoder[Account] = deriveDecoder[Account]
+  implicit val accountCreatedDecoder: Decoder[AccountCreateRequest] = deriveDecoder[AccountCreateRequest]
+//  implicit val accountIdDecoder: Decoder[AccountId] = deriveDecoder[AccountId]
+//  implicit val accountNameDecoder: Decoder[AccountName] = deriveDecoder[AccountName]
+
   implicit val accountEncoder: Encoder[Account] = deriveEncoder[Account]
+//  implicit val accountIdEncoder: Encoder[AccountId] = deriveEncoder[AccountId]
+//  implicit val accountNameEncoder: Encoder[AccountName] = deriveEncoder[AccountName]
 
 }
