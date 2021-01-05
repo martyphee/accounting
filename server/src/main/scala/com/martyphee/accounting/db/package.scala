@@ -1,40 +1,46 @@
 package com.martyphee.accounting
 
-import cats.effect.Resource
+import cats.effect._
+import natchez.Trace
 import skunk.Session
 import zio._
 import zio.interop.catz._
-import natchez.Trace.Implicits.noop
+import skunk.util.Typer
 
 package object db {
-  type DbSession = Has[DbSession.Service]
-  implicit val runtime: Runtime[ZEnv] = Runtime.default
+  type SessionPool = Has[SessionPool.Service]
 
-  object DbSession {
+  object SessionPool {
     trait Service {
-      def session: Managed[Throwable, skunk.Session[Task]]
+      val session: ZManaged[Any, Throwable, Session[Task]]
     }
 
-    object DbPool {
-      trait PoolConfig {}
-    }
-
-    val live: ULayer[DbSession] = ZLayer.succeed( {
-      new Service {
-        def session: Managed[Throwable, skunk.Session[Task]] = {
-          val session: Resource[Task, Session[Task]] = Session.single(
-            host = "localhost",
-            user = "postgres",
-            database = "world",
-            password = Some("postgres")
+    def live(
+              implicit concurrent: Concurrent[Task],
+              contextShift: ContextShift[Task],
+              trace: Trace[Task]
+            ): ZLayer[config.DBConfigService, Throwable, SessionPool] =
+      ZLayer.fromServiceManaged { config =>
+        Session
+          .pooled[Task](
+            host = config.host,
+            port = config.port,
+            user = config.user,
+            database = config.database,
+            password = config.password,
+            max = 4,
+            strategy = Typer.Strategy.SearchPath,
           )
-          session.toManaged
-        }
+          .toManagedZIO
+          .map(
+            resource =>
+              new SessionPool.Service {
+                val session = resource.toManagedZIO
+              }
+          )
       }
-    })
-
-
-    def session: ZIO[DbSession, Throwable, Managed[Throwable, skunk.Session[Task]]] =
-      ZIO.access(_.get.session)
   }
+
+  val session: ZManaged[SessionPool, Throwable, Session[Task]] =
+    ZManaged.accessManaged(_.get.session)
 }

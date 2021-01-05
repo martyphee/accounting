@@ -1,10 +1,10 @@
 package com.martyphee.accounting
 
-import cats.effect.Resource
-import com.martyphee.accounting.ExtendedPersistence.ExtendedPersistence
-import com.martyphee.accounting.db.DbSession
+import com.martyphee.accounting.db._
 import com.typesafe.scalalogging.LazyLogging
-import skunk._
+import natchez.Trace.Implicits.noop
+import com.martyphee.accounting.config.DBConfig
+import skunk.Query
 import skunk.implicits._
 import skunk.codec.all._
 import zio.{ExitCode => ZExitCode, _}
@@ -20,19 +20,21 @@ object BasicPersistence extends LazyLogging {
   type BasicPersistence = Has[BasicPersistence.Service]
 
   trait Service {
-    def doBasic(session: Session[Task]): Task[OffsetDateTime]
+    def doBasic: Task[OffsetDateTime]
   }
 
-  val live: ZLayer[DbSession, Nothing, BasicPersistence] = ZLayer.fromService { db: DbSession.Service =>
-      new Service {
-        override def doBasic(session: Session[Task]): Task[OffsetDateTime] = {
+  val live: ZLayer[SessionPool, Throwable, BasicPersistence] = ZLayer.fromService { db: SessionPool.Service =>
+    new Service {
+      override def doBasic: Task[OffsetDateTime] = {
+        db.session.use { session =>
           session.unique(sql"select current_timestamp".query(timestamptz))
         }
       }
+    }
   }
 
-  def doBasic(session: Session[Task]): URIO[BasicPersistence, Task[OffsetDateTime]] = ZIO.access(
-    _.get.doBasic(session)
+  def doBasic: ZIO[BasicPersistence, Throwable, OffsetDateTime] = ZIO.accessM(
+    _.get.doBasic
   )
 }
 
@@ -40,7 +42,7 @@ object ExtendedPersistence {
   type ExtendedPersistence = Has[ExtendedPersistence.Service]
 
   trait Service {
-    def doExtended(session: Session[Task]): Resource[Task, fs2.Stream[Task, Country]]
+    def doExtended: Task[List[Country]]
   }
 
   val extended: Query[String, Country] =
@@ -52,18 +54,20 @@ object ExtendedPersistence {
       .query(varchar ~ bpchar(3) ~ int4)
       .gmap[Country]
 
-  val live: ZLayer[DbSession, Nothing, ExtendedPersistence] = ZLayer.fromService { db: DbSession.Service =>
+  val live: ZLayer[SessionPool, Nothing, ExtendedPersistence] = ZLayer.fromService { db: SessionPool.Service =>
     new Service {
-      override def doExtended(session: Session[Task]): Resource[Task, fs2.Stream[Task, Country]] = {
-        session.prepare(extended).map { pq =>
-          pq.stream("U%", 32)
-        }
+      override def doExtended: Task[List[Country]] = {
+        db.session.use { session => {
+          session.prepare(extended).use { pq =>
+            pq.stream("U%", 32).compile.toList
+          }
+        }}
       }
     }
   }
 
-  def doExtended(session: Session[Task]): URIO[ExtendedPersistence, Resource[Task, fs2.Stream[Task, Country]]] = ZIO.access(
-    _.get.doExtended(session)
+  def doExtended(): ZIO[ExtendedPersistence, Throwable, List[Country]] = ZIO.accessM(
+    _.get.doExtended
   )
 }
 
@@ -72,30 +76,19 @@ object AccountingApplication extends App with LazyLogging {
   import com.martyphee.accounting.ExtendedPersistence.ExtendedPersistence
 
   override def run(args: List[String]): URIO[ZEnv, ZExitCode] = {
-    type AppEnvironment = Console with DbSession with BasicPersistence with ExtendedPersistence
+    type AppEnvironment = Console with SessionPool with BasicPersistence with ExtendedPersistence
+
     val appEnvironment =
-      zio.console.Console.live >+> DbSession.live >+> BasicPersistence.live >+> ExtendedPersistence.live
+      zio.console.Console.live >+> DBConfig.live >+> SessionPool.live >+>
+        BasicPersistence.live >+> ExtendedPersistence.live
 
     val program: ZIO[AppEnvironment, Throwable, Unit] = {
       for {
         _ <- putStrLnErr("Application is starting up")
-        db <- ZIO.service[DbSession.Service]
-        _ <- db.session.use({ s =>
-          for {
-            result <- BasicPersistence.doBasic(s)
-            _ <- result.foldM(
-              err => putStrLnErr(s"s{err}"),
-              offset => putStrLn(s"Current Time: ${offset}")
-            )
-            result2 <- ExtendedPersistence.doExtended(s)
-            _ <- result2.use({ q =>
-              q.evalMap(c => putStrLn(s"${c}"))
-                .compile
-                .drain
-            })
-
-          } yield ()
-        })
+        result <- BasicPersistence.doBasic
+        _ <- putStrErr(s"The time is $result")
+        countries <- ExtendedPersistence.doExtended()
+        _ <- putStrErr(s"Found countries $countries")
       } yield (ZExitCode.failure)
     }
 
